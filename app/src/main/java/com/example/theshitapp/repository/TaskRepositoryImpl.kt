@@ -13,12 +13,15 @@ import com.example.theshitapp.model.User
 import com.example.theshitapp.model.UserEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.NoSuchElementException
 import java.util.UUID
 
 class TaskRepositoryImpl(context: Context) {
@@ -38,19 +41,26 @@ class TaskRepositoryImpl(context: Context) {
     // Initialize database with sample data if needed
     suspend fun initializeDatabase() {
         withContext(Dispatchers.IO) {
-            // Initialize users if none exist
-            val users = TaskRepository.users.map { UserEntity.fromUser(it) }
-            userDao.insertUsers(users)
-            
-            // Initialize categories if none exist
-            val categories = TaskRepository.taskCategories.map { 
-                TaskCategoryEntity.fromTaskCategory(it) 
+            // Check if we already have users
+            val existingUsers = try {
+                userDao.getAllUsers().first()
+            } catch (e: NoSuchElementException) {
+                emptyList()
             }
-            categoryDao.insertCategories(categories)
             
-            // Initialize tasks if none exist
-            val tasks = TaskRepository.tasks.map { TaskEntity.fromTask(it) }
-            taskDao.insertTasks(tasks)
+            if (existingUsers.isEmpty()) {
+                // Initialize default users
+                val defaultUsers = listOf(
+                    UserEntity("1", "Matt"),
+                    UserEntity("2", "John"),
+                    UserEntity("3", "Sarah"),
+                    UserEntity("4", "Emily"),
+                    UserEntity("5", "Alex")
+                )
+                userDao.insertUsers(defaultUsers)
+            }
+            
+            // We don't add default categories anymore - let the user create them
             
             // Refresh caches
             refreshUserCache()
@@ -61,7 +71,7 @@ class TaskRepositoryImpl(context: Context) {
     // Refresh the users cache
     private suspend fun refreshUserCache() {
         withContext(Dispatchers.IO) {
-            val userEntities = userDao.getAllUsers().map { it.toList() }.firstOrNull() ?: emptyList()
+            val userEntities = userDao.getAllUsers().first()
             usersCache = userEntities.associate { it.id to it.toUser() }
         }
     }
@@ -74,7 +84,7 @@ class TaskRepositoryImpl(context: Context) {
                 refreshUserCache()
             }
             
-            val categoryEntities = categoryDao.getAllCategories().map { it.toList() }.firstOrNull() ?: emptyList()
+            val categoryEntities = categoryDao.getAllCategories().first()
             categoriesCache = categoryEntities.associate { 
                 it.id to it.toTaskCategory(usersCache)
             }
@@ -243,6 +253,7 @@ class TaskRepositoryImpl(context: Context) {
         return withContext(Dispatchers.IO) {
             val task = taskDao.getTaskById(taskId)
             if (task != null) {
+                // Update the task completion status
                 taskDao.updateTaskCompletionStatus(taskId, true)
                 
                 // Update task count for the category
@@ -320,8 +331,14 @@ class TaskRepositoryImpl(context: Context) {
     }
     
     // Add a new category
-    suspend fun addCategory(name: String): TaskCategory {
+    suspend fun addCategory(name: String): TaskCategory? {
         return withContext(Dispatchers.IO) {
+            // Check if a category with this name already exists
+            val nameExists = categoryDao.getCategoryCountByName(name) > 0
+            if (nameExists) {
+                return@withContext null // Return null to indicate failure due to duplicate name
+            }
+            
             // Refresh user cache if needed
             if (usersCache.isEmpty()) refreshUserCache()
             
@@ -331,13 +348,18 @@ class TaskRepositoryImpl(context: Context) {
                 
             val category = TaskCategory(id, name, listOf(currentUser), 0)
             
-            // Insert into database
-            categoryDao.insertCategory(TaskCategoryEntity.fromTaskCategory(category))
-            
-            // Refresh category cache
-            refreshCategoryCache()
-            
-            category
+            try {
+                // Insert into database
+                categoryDao.insertCategory(TaskCategoryEntity.fromTaskCategory(category))
+                
+                // Refresh category cache
+                refreshCategoryCache()
+                
+                category
+            } catch (e: Exception) {
+                // Handle any exceptions (e.g., unique constraint violation)
+                null
+            }
         }
     }
     
@@ -354,6 +376,27 @@ class TaskRepositoryImpl(context: Context) {
             refreshCategoryCache()
             
             true
+        }
+    }
+    
+    // Clear all tasks and categories
+    suspend fun clearAllTasksAndCategories() {
+        withContext(Dispatchers.IO) {
+            // Delete all tasks first (including completed tasks)
+            taskDao.deleteAllTasks()
+            
+            // Then delete all categories
+            categoryDao.deleteAllCategories()
+            
+            // Refresh caches
+            refreshCategoryCache()
+        }
+    }
+    
+    // Delete only completed tasks
+    suspend fun clearCompletedTasks() {
+        withContext(Dispatchers.IO) {
+            taskDao.deleteCompletedTasks()
         }
     }
     
@@ -417,5 +460,78 @@ class TaskRepositoryImpl(context: Context) {
             
             true
         }
+    }
+    
+    // Get all completed tasks
+    fun getCompletedTasks(): Flow<List<Task>> {
+        return taskDao.getCompletedTasks().map { entities ->
+            entities.map { it.toTask(categoriesCache, usersCache) }
+        }
+    }
+    
+    // Get completed tasks grouped by date
+    suspend fun getCompletedTasksByDate(): Map<Date, List<Task>> {
+        return withContext(Dispatchers.IO) {
+            // Refresh caches if needed
+            if (usersCache.isEmpty()) refreshUserCache()
+            if (categoriesCache.isEmpty()) refreshCategoryCache()
+            
+            val completedTasks = taskDao.getCompletedTasks().first()
+                .map { it.toTask(categoriesCache, usersCache) }
+            
+            val groupedTasks = mutableMapOf<Date, MutableList<Task>>()
+            
+            // Group tasks by normalized date (without time component)
+            completedTasks.forEach { task ->
+                val normalizedDate = getNormalizedDate(task.dueDate)
+                if (!groupedTasks.containsKey(normalizedDate)) {
+                    groupedTasks[normalizedDate] = mutableListOf()
+                }
+                groupedTasks[normalizedDate]?.add(task)
+            }
+            
+            groupedTasks
+        }
+    }
+    
+    // Calculate completion score for a specific date
+    suspend fun getCompletionScoreForDate(date: Date): Pair<Int, Int> {
+        return withContext(Dispatchers.IO) {
+            val normalizedDate = getNormalizedDate(date)
+            
+            // Get all tasks due on this date (both completed and not completed)
+            val allTasksForDate = taskDao.getAllTasks().first().filter { 
+                getNormalizedDate(it.dueDate) == normalizedDate
+            }
+            
+            val completedTasksCount = allTasksForDate.count { it.isCompleted }
+            val totalTasksCount = allTasksForDate.size
+            
+            Pair(completedTasksCount, totalTasksCount)
+        }
+    }
+    
+    // Helper function to normalize a date by removing the time component
+    private fun getNormalizedDate(date: Date): Date {
+        val calendar = Calendar.getInstance()
+        calendar.time = date
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        return calendar.time
+    }
+    
+    // Format date with day name for completed tasks view
+    fun formatDateWithDayName(date: Date): String {
+        val dayFormat = SimpleDateFormat("EEEE", Locale.US)
+        val dateFormat = SimpleDateFormat("dd MMMM, yyyy", Locale.US)
+        return "${dayFormat.format(date)}, ${dateFormat.format(date)}"
+    }
+    
+    // Format time (hours and minutes)
+    fun formatTime(timeInMillis: Long): String {
+        val timeFormat = SimpleDateFormat("h:mm a", Locale.US)
+        return timeFormat.format(Date(timeInMillis))
     }
 } 

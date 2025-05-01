@@ -12,7 +12,7 @@ import com.example.theshitapp.util.Converters
 
 @Database(
     entities = [TaskEntity::class, TaskCategoryEntity::class, UserEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

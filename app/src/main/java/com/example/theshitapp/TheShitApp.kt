@@ -17,8 +17,9 @@ class TheShitApp : Application() {
     override fun onCreate() {
         super.onCreate()
         
-        // Initialize database with sample data
+        // Initialize database with users only
         applicationScope.launch {
+            // Initialize database with users only
             repository.initializeDatabase()
         }
     }

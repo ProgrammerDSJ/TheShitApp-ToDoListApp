@@ -17,6 +17,9 @@ interface TaskCategoryDao {
     @Query("SELECT * FROM categories WHERE id = :categoryId")
     suspend fun getCategoryById(categoryId: String): TaskCategoryEntity?
     
+    @Query("SELECT COUNT(*) FROM categories WHERE name = :name")
+    suspend fun getCategoryCountByName(name: String): Int
+    
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCategory(category: TaskCategoryEntity)
     
@@ -31,6 +34,9 @@ interface TaskCategoryDao {
     
     @Query("DELETE FROM categories WHERE id = :categoryId")
     suspend fun deleteCategoryById(categoryId: String)
+    
+    @Query("DELETE FROM categories")
+    suspend fun deleteAllCategories()
     
     @Query("UPDATE categories SET activeTasksCount = :taskCount WHERE id = :categoryId")
     suspend fun updateTaskCount(categoryId: String, taskCount: Int)

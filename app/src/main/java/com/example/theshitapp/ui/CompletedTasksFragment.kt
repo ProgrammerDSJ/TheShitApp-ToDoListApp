@@ -6,17 +6,22 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.example.theshitapp.TheShitApp
 import com.example.theshitapp.databinding.FragmentCompletedTasksBinding
 import com.example.theshitapp.model.Task
-import com.example.theshitapp.repository.TaskRepository
+import com.example.theshitapp.repository.TaskRepositoryImpl
+import kotlinx.coroutines.launch
 import java.util.Date
 
 class CompletedTasksFragment : Fragment() {
     
     private var _binding: FragmentCompletedTasksBinding? = null
     private val binding get() = _binding!!
+    
+    private lateinit var repository: TaskRepositoryImpl
     
     // Constants for view types
     private val TYPE_HEADER = 0
@@ -28,6 +33,7 @@ class CompletedTasksFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         _binding = FragmentCompletedTasksBinding.inflate(inflater, container, false)
+        repository = (requireActivity().application as TheShitApp).repository
         return binding.root
     }
     
@@ -42,19 +48,21 @@ class CompletedTasksFragment : Fragment() {
     }
     
     private fun setupCompletedTasks() {
-        val completedTasksGrouped = TaskRepository.getCompletedTasksByDate()
-        
-        if (completedTasksGrouped.isEmpty()) {
-            binding.emptyCompletedTasksView.visibility = View.VISIBLE
-            binding.completedTasksRecyclerView.visibility = View.GONE
-        } else {
-            binding.emptyCompletedTasksView.visibility = View.GONE
-            binding.completedTasksRecyclerView.visibility = View.VISIBLE
+        lifecycleScope.launch {
+            val completedTasksGrouped = repository.getCompletedTasksByDate()
             
-            val adapter = CompletedTasksAdapter(completedTasksGrouped)
-            binding.completedTasksRecyclerView.apply {
-                layoutManager = LinearLayoutManager(requireContext())
-                this.adapter = adapter
+            if (completedTasksGrouped.isEmpty()) {
+                binding.emptyCompletedTasksView.visibility = View.VISIBLE
+                binding.completedTasksRecyclerView.visibility = View.GONE
+            } else {
+                binding.emptyCompletedTasksView.visibility = View.GONE
+                binding.completedTasksRecyclerView.visibility = View.VISIBLE
+                
+                val adapter = CompletedTasksAdapter(completedTasksGrouped)
+                binding.completedTasksRecyclerView.apply {
+                    layoutManager = LinearLayoutManager(requireContext())
+                    this.adapter = adapter
+                }
             }
         }
     }
@@ -73,11 +81,12 @@ class CompletedTasksFragment : Fragment() {
         private val dateText = view.findViewById<android.widget.TextView>(com.example.theshitapp.R.id.dateHeaderText)
         private val scoreText = view.findViewById<android.widget.TextView>(com.example.theshitapp.R.id.scoreText)
         
-        fun bind(date: Date, scoreData: Pair<Int, Int>) {
+        suspend fun bind(date: Date) {
             // Format the date
-            dateText.text = TaskRepository.formatDateWithDayName(date)
+            dateText.text = repository.formatDateWithDayName(date)
             
             // Set score text and color
+            val scoreData = repository.getCompletionScoreForDate(date)
             val completed = scoreData.first
             val total = scoreData.second
             scoreText.text = "Score: $completed/$total"
@@ -108,7 +117,7 @@ class CompletedTasksFragment : Fragment() {
             // For completed time, we'd ideally store the completion timestamp
             // As a simplification, we'll use the due time if available, or just show "Completed"
             val completionTime = if (task.dueTime != null) {
-                "Completed: ${TaskRepository.formatTime(task.dueTime)}"
+                "Completed: ${repository.formatTime(task.dueTime)}"
             } else {
                 "Completed"
             }
@@ -166,8 +175,9 @@ class CompletedTasksFragment : Fragment() {
             when (holder) {
                 is DateHeaderViewHolder -> {
                     val date = items[position] as Date
-                    val scoreData = TaskRepository.getCompletionScoreForDate(date)
-                    holder.bind(date, scoreData)
+                    lifecycleScope.launch {
+                        holder.bind(date)
+                    }
                 }
                 is CompletedTaskViewHolder -> {
                     val task = items[position] as Task

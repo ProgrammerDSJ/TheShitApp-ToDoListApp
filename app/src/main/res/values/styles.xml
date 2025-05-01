@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Calendar styles -->
+    <style name="CalendarTheme" parent="ThemeOverlay.MaterialComponents.Light">
+        <item name="colorAccent">@color/blue</item>
+        <item name="colorPrimary">@color/blue</item>
+        <item name="android:textColorPrimary">@color/black</item>
+        
+        <!-- Hide the default calendar header more aggressively -->
+        <item name="android:headerBackground">@android:color/transparent</item>
+        <item name="android:headerMonthTextAppearance">@style/CalendarHeaderInvisible</item>
+    </style>
+
+    <style name="CalendarHeaderInvisible">
+        <item name="android:textColor">@android:color/transparent</item>
+        <item name="android:textSize">0sp</item>
+        <item name="android:visibility">gone</item>
+    </style>
+
+    <style name="CalendarDateTextAppearance">
+        <item name="android:textColor">@color/black</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <style name="CalendarWeekDayAppearance">
+        <item name="android:textColor">@color/blue</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+</resources> 

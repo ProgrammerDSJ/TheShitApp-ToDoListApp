@@ -1,11 +1,15 @@
 package com.example.theshitapp.model
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
 import com.example.theshitapp.util.Converters
 
-@Entity(tableName = "categories")
+@Entity(
+    tableName = "categories",
+    indices = [Index(value = ["name"], unique = true)]
+)
 @TypeConverters(Converters::class)
 data class TaskCategoryEntity(
     @PrimaryKey

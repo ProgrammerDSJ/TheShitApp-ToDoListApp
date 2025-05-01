@@ -62,7 +62,7 @@ class ScheduleContainerFragment : Fragment() {
         val currentFragment = childFragmentManager.findFragmentByTag("f$currentItem")
         
         when (currentFragment) {
-            is TasksFragment -> currentFragment.refreshTasks()
+            is TasksFragment -> currentFragment.refresh()
             is DailyTasksFragment -> currentFragment.refreshTasks()
             is WeeklyScheduleFragment -> {} // The weekly schedule will refresh itself when it becomes visible
             is CompletedTasksFragment -> currentFragment.refreshCompletedTasks()

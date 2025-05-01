@@ -30,6 +30,9 @@ interface TaskDao {
     @Query("SELECT COUNT(*) FROM tasks WHERE categoryId = :categoryId AND isCompleted = 0")
     suspend fun getTaskCountForCategory(categoryId: String): Int
     
+    @Query("SELECT COUNT(*) FROM tasks WHERE categoryId = :categoryId")
+    suspend fun getTotalTaskCountForCategory(categoryId: String): Int
+    
     @Query("SELECT * FROM tasks WHERE dueDate >= :startDate AND dueDate < :endDate AND isCompleted = 0")
     suspend fun getTasksForDateRange(startDate: Date, endDate: Date): List<TaskEntity>
     
@@ -54,6 +57,12 @@ interface TaskDao {
     @Query("DELETE FROM tasks WHERE categoryId = :categoryId")
     suspend fun deleteTasksByCategory(categoryId: String)
     
+    @Query("DELETE FROM tasks")
+    suspend fun deleteAllTasks()
+    
     @Query("UPDATE tasks SET isCompleted = :isCompleted WHERE id = :taskId")
     suspend fun updateTaskCompletionStatus(taskId: String, isCompleted: Boolean)
+    
+    @Query("DELETE FROM tasks WHERE isCompleted = 1")
+    suspend fun deleteCompletedTasks()
 } 
